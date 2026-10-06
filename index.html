@@ -1,0 +1,1488 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Roofski">
+<meta name="theme-color" content="#1e293b">
+<meta charset="UTF-8">
+<title>U-Wert & Taupunkt Rechner Pro</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root {
+  --primary:#2c3e50; --accent:#3498db; --danger:#e74c3c; --success:#27ae60;
+  --bg:#eef2f3; --card:#fff; --border:#ddd;
+}
+* { box-sizing:border-box; }
+body { font-family:'Segoe UI',Arial,sans-serif; background:var(--bg); padding:20px; color:#333; margin:0; }
+.container { max-width:1150px; margin:auto; background:var(--card); padding:30px; border-radius:16px; box-shadow:0 10px 30px rgba(0,0,0,.08); }
+h1 { color:var(--primary); text-align:center; margin-bottom:5px; }
+.subtitle { text-align:center; color:#777; margin-bottom:25px; }
+
+.collapsible-header {
+  display:flex; justify-content:space-between; align-items:center;
+  cursor:pointer; background:#f4f6f7; border:1px solid var(--border);
+  border-radius:8px; padding:10px 16px; font-weight:600; color:var(--primary);
+  margin-top:15px; user-select:none;
+}
+.collapsible-header:hover { background:#e9edef; }
+.collapsible-header .arrow { transition:transform .25s; }
+.collapsible-header.open .arrow { transform:rotate(180deg); }
+
+.collapsible-content {
+  max-height:0; overflow:hidden; transition:max-height .3s ease;
+  border:1px solid var(--border); border-top:none; border-radius:0 0 8px 8px;
+  padding:0 16px;
+}
+.collapsible-content.open { padding:16px; }
+.hint-text {
+  font-size:12px;
+  color:#888;
+  background:#fff;
+  border:1px dashed var(--border);
+  border-radius:6px;
+  padding:10px 14px;
+  margin:14px 0 0;
+  line-height:1.5;
+}
+
+.toolbar { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-bottom:25px; }
+button { cursor:pointer; border:none; border-radius:8px; padding:10px 18px; font-size:14px; font-weight:600; transition:.2s; }
+button:hover { transform:translateY(-2px); filter:brightness(1.05); }
+.btn-primary { background:var(--accent); color:#fff; }
+.btn-success { background:var(--success); color:#fff; }
+.btn-danger { background:var(--danger); color:#fff; }
+.btn-secondary { background:#95a5a6; color:#fff; }
+
+table { width:100%; border-collapse:collapse; margin-bottom:20px; }
+th, td { padding:8px; border:1px solid var(--border); text-align:center; font-size:14px; }
+th { background:var(--primary); color:#fff; }
+input, select { width:100%; padding:6px; border:1px solid var(--border); border-radius:6px; font-size:13px; }
+.layer-name { text-align:left; }
+.del-btn { background:var(--danger); color:#fff; border-radius:6px; padding:4px 10px; }
+
+.result-box { background:#f8f9fa; border-left:5px solid var(--accent); padding:20px; border-radius:8px; margin-top:20px; }
+.result-value { font-size:32px; font-weight:bold; color:var(--primary); }
+.result-label { color:#777; font-size:14px; }
+
+.result-box.warn { border-left-color:var(--danger); background:#fdf1f0; }
+.result-box.ok { border-left-color:var(--success); background:#f1faf3; }
+.result-box.warn-yellow {background: #fff8e1;border-left: 5px solid #f39c12;color: #8a6d3b;}
+
+/* 2D Schichtenaufbau – dynamisch optimiert */
+#layerPreviewWrap {
+  display:flex;
+  justify-content:center;        /* NEU: zentriert #layerPreview horizontal */
+  margin-top:20px;
+  background:#fafafa;
+  border:1px solid #ddd;
+  border-radius:6px;
+  padding:20px 40px 20px 70px;
+  position:relative;
+  height:420px;
+  min-height:420px;
+}
+
+#layerPreview {
+  display:flex;
+  flex-direction:column-reverse;
+  width:min(45%, 320px);         /* GEÄNDERT: responsiv statt fix 180px */
+  min-width:220px;               /* verhindert zu schmales Quetschen bei kleinen Screens */
+  position:relative;
+  align-self:center;             /* bleibt für vertikale Zentrierung bei Restraum */
+  border:1px solid #ccc;
+  box-shadow:0 2px 8px rgba(0,0,0,.06);
+}
+
+.layer-block {
+  position:relative;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding-left:10px;
+  color:#222;
+  font-size:11px;
+  font-weight:600;
+  text-align:center;
+  overflow:hidden;
+  border-bottom:1px solid rgba(0,0,0,.25);
+  transition:height .25s ease, width .25s ease;
+}.layer-block:last-child { border-bottom:none; }
+.layer-block .num-badge {
+  width:20px; height:20px; border-radius:50%; background:#2c3e50; color:#fff;
+  font-size:11px; font-weight:700; display:flex; align-items:center; justify-content:center;
+  flex-shrink:0;
+  box-shadow:0 0 0 2px rgba(255,255,255,.6);
+}
+.layer-block.compact .num-badge { width:16px; height:16px; font-size:9px; }
+.layer-block.condensation::after {
+  content:"💧"; position:absolute; right:10px; top:50%; transform:translateY(-50%); font-size:16px;
+}
+.layer-block.condensation { outline:3px solid var(--danger); outline-offset:-3px; }
+
+/* horizontale Gesamtmaßkette oben */
+.dim-vertical {
+  position:absolute; left:70px; right:20px; top:0; height:30px;
+  display:flex; align-items:center; justify-content:center;
+}
+.dim-vertical .dim-line { position:absolute; top:22px; left:0; right:0; border-top:1px solid #333; }
+.dim-vertical .dim-line::before, .dim-vertical .dim-line::after {
+  content:""; position:absolute; top:-4px; width:1px; height:8px; background:#333;
+}
+.dim-vertical .dim-line::before { left:0; }
+.dim-vertical .dim-line::after { right:0; }
+.dim-vertical .dim-label {
+  font-size:12px; font-weight:600; color:#333; background:#fafafa; padding:0 6px; z-index:1;
+}
+
+/* vertikale Bemaßung je Schicht links, von unten (innen) nach oben (außen) */
+#dimRow {
+  display:flex;
+  flex-direction:column-reverse;
+  width:60px;
+  position:absolute;
+  left:10px;
+  top:20px;
+  bottom:20px;
+}
+.dim-segment {
+  position:relative;
+  border-bottom:1px dashed #999;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  transition:height .25s ease;
+}
+.dim-segment:last-child { border-bottom:none; }
+.dim-segment .dim-hline { position:absolute; top:0; bottom:0; right:6px; border-left:1px solid #333; }
+.dim-segment .dim-hline::before, .dim-segment .dim-hline::after {
+  content:""; position:absolute; left:-4px; width:8px; height:1px; background:#333;
+}
+.dim-segment .dim-hline::before { top:0; }
+.dim-segment .dim-hline::after { bottom:0; }
+.dim-segment .dim-mm { position:absolute; right:14px; text-align:right; font-size:10px; color:#444; white-space:nowrap; }
+
+/* Legende rechts */
+#layerLegend { width:230px; margin-left:15px; font-size:12px; }
+#layerLegend .legend-item { display:flex; align-items:flex-start; gap:8px; padding:5px 0; border-bottom:1px solid #eee; }
+#layerLegend .legend-num {
+  width:20px; height:20px; border-radius:50%; background:#2c3e50; color:#fff; font-size:11px; font-weight:700;
+  display:flex; align-items:center; justify-content:center; flex-shrink:0;
+}
+#layerLegend .legend-text b { display:block; font-size:12px; }
+#layerLegend .legend-text span { color:#777; font-size:11px; }
+
+/* Materialmuster */
+.mat-daemmung { background:repeating-linear-gradient(45deg,#fff8dc,#fff8dc 6px,#f5deb3 6px,#f5deb3 12px); }
+.mat-mauerwerk { background:repeating-linear-gradient(0deg,#c0392b,#c0392b 10px,#a93226 10px,#a93226 12px), repeating-linear-gradient(90deg,transparent,transparent 20px,rgba(0,0,0,.15) 20px,rgba(0,0,0,.15) 22px); background-blend-mode:multiply; }
+.mat-beton { background:#b0b0ac; background-image:radial-gradient(circle,rgba(0,0,0,.08) 1px,transparent 1px); background-size:8px 8px; }
+.mat-holz { background:repeating-linear-gradient(90deg,#c8996b,#c8996b 4px,#b3814f 4px,#b3814f 8px); }
+.mat-folie { background:repeating-linear-gradient(45deg,#dcdcdc,#dcdcdc 3px,#bfbfbf 3px,#bfbfbf 6px); }
+.mat-putz { background:#e8e4d8; }
+.mat-metall { background:linear-gradient(90deg,#c9d6df,#e2e8ee,#c9d6df); }
+.mat-sonst { background:#d5d5d5; }
+
+/* Modal */
+.modal-overlay { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,.5); z-index:100; align-items:center; justify-content:center; }
+.modal-overlay.active { display:flex; }
+.modal-box { background:#fff; border-radius:12px; padding:25px; max-width:700px; width:90%; max-height:85vh; overflow-y:auto; }
+.modal-box h2 { margin-top:0; color:var(--primary); }
+.template-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:15px; }
+.template-card { border:2px solid var(--border); border-radius:10px; padding:14px; cursor:pointer; transition:.2s; }
+.template-card:hover { border-color:var(--accent); background:#f0f8ff; }
+.template-card h3 { margin:0 0 6px; font-size:15px; color:var(--primary); }
+.template-card p { margin:0; font-size:12px; color:#777; }
+.template-cat { font-weight:bold; color:var(--accent); margin-top:15px; }
+.modal-close { float:right; background:var(--danger); color:#fff; border-radius:50%; width:28px; height:28px; padding:0; }
+
+.add-material-box { display:flex; gap:8px; align-items:end; background:#f8f9fa; padding:15px; border-radius:8px; margin-bottom:20px; flex-wrap:wrap; }
+.add-material-box div { flex:1; min-width:120px; }
+.add-material-box label { font-size:12px; color:#777; display:block; margin-bottom:4px; }
+
+.chart-wrap { background:#f8f9fa; border-radius:10px; padding:15px; margin-top:20px; }
+.metrics-panel { width:250px; background:#f8f9fa; border-radius:10px; padding:15px; font-size:13px; }
+.metrics-panel .metric-row { padding:8px 0; border-bottom:1px solid #e0e0e0; }
+.metrics-panel .metric-label { display:block; color:#777; font-size:11px; text-transform:uppercase; letter-spacing:.3px; }
+.metrics-panel .metric-value { display:block; font-size:17px; font-weight:700; color:var(--primary); margin-top:2px; }
+.metric-bar { height:6px; background:#e0e0e0; border-radius:3px; margin-top:6px; overflow:hidden; }
+.metric-bar-fill { height:100%; background:var(--success); border-radius:3px; transition:width .3s; }
+.ergebnis {
+  padding: 14px 18px;
+  border-radius: 10px;
+  margin-bottom: 20px;
+  color: #fff;
+}
+.ergebnis.success { background: var(--success); }
+.ergebnis.warning { background: #f39c12; }
+.ergebnis.danger  { background: var(--danger); }
+.result-triple { display:flex; flex-direction:column; gap:16px; margin-top:20px; }
+.result-card { flex:1; background:#f8f9fa; border-left:5px solid var(--accent); padding:18px; border-radius:8px; text-align:left; }
+.result-card.ok { border-left-color:var(--success); background:#f1faf3; }
+.result-card.warn { border-left-color:#f39c12; background:#fff8e1; }
+.result-card.danger { border-left-color:var(--danger); background:#fdf1f0; }
+.result-card.summer { border-left-color:#16a085; background:#e8f8f5; }
+.result-card .result-value { font-size:26px; }
+.result-card .result-sub { font-size:12px; color:#777; margin-top:4px; }
+.result-card .result-gm2 { font-size:15px; font-weight:700; color:var(--primary); margin:8px 0 2px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>U-Wert & Taupunkt Rechner Pro</h1>
+  <p class="subtitle">Bauteilaufbau erstellen, U-Wert nach DIN EN ISO 6946 und Taupunkt nach Glaser-Verfahren (DIN 4108-3) berechnen</p>
+
+  <div class="toolbar">
+    <button class="btn-primary" onclick="openTemplateModal()">🚀 Schnellstart: Standardaufbau wählen</button>
+    <button class="btn-success" onclick="addLayer()">+ Schicht hinzufügen</button>
+    <button class="btn-secondary" onclick="resetAll()">🔄 Zurücksetzen</button>
+  </div>
+
+  <table id="layerTable">
+    <thead>
+      <tr>
+       		<th style="width:22%">Material</th>
+		<th style="width:10%">Dicke (mm)</th>
+		<th style="width:10%">λ-Wert (W/mK)</th>
+		<th style="width:8%">μ-Wert</th>
+		<th style="width:8%">ρ (kg/m³)</th>
+		<th style="width:8%">c (J/kgK)</th>
+		<th style="width:10%">R-Wert (m²K/W)</th>
+		<th style="width:10%">sd-Wert (m)</th>
+		<th style="width:8%">Aktion</th>
+      </tr>
+    </thead>
+    <tbody id="layerBody"></tbody>
+    </table>
+
+<!-- Sparrenanteil -->
+<div class="collapsible-header" id="sparrenToggleHeader" onclick="toggleSection('sparrenToggleContent', this)">
+  <span>🪵 Sparren- / Gefachanteil (optional)</span>
+  <span class="arrow">▼</span>
+</div>
+<div class="collapsible-content" id="sparrenToggleContent">
+  <div class="add-material-box" style="background:#eaf3ff;">
+    <div style="flex:0 0 100%; display:flex; align-items:center; gap:8px;">
+      <input type="checkbox" id="sparrenAktiv" onchange="render()">
+      <label for="sparrenAktiv" style="margin:0; font-weight:600;">Sparrenanteil in U-Wert-Berechnung einbeziehen (nur für Dach/Sparrenkonstruktion)</label>
+    </div>
+    <div>
+      <label>Sparrenbreite (cm)</label>
+      <input type="number" id="sparrenBreite" step="0.5" placeholder="z. B. 8" value="8">
+    </div>
+    <div>
+      <label>Sparrenabstand (Achsmaß, cm)</label>
+      <input type="number" id="sparrenAbstand" step="1" placeholder="z. B. 80" value="80">
+    </div>
+    <div>
+      <label>λ-Wert Sparrenholz (W/mK)</label>
+      <input type="number" id="sparrenLambda" step="0.001" value="0.13">
+    </div>
+    <div style="flex:0 0 auto;">
+      <button class="btn-primary" onclick="render()">↻ Sparrenanteil neu berechnen</button>
+    </div>
+  </div>
+  <p class="hint-text">
+    Hinweis: Der Sparrenanteil wird <strong>nur einbezogen, wenn die Checkbox aktiviert ist</strong>. Verfahren mit oberem/unterem Grenzwert nach DIN&nbsp;EN&nbsp;ISO&nbsp;6946.
+  </p>
+</div>
+
+<!-- Sommerdaten -->
+<div class="collapsible-header" id="sommerToggleHeader" onclick="toggleSection('sommerToggleContent', this)">
+  <span>☀️ Sommerdaten (optional)</span>
+  <span class="arrow">▼</span>
+</div>
+<div class="collapsible-content" id="sommerToggleContent">
+  <div class="add-material-box" style="background:#e8f8f5;">
+    <div>
+      <label>Sommer: Außentemp. (°C)</label>
+      <input type="number" id="sommerTe" step="0.5" value="12">
+    </div>
+    <div>
+      <label>Sommer: Außen rel. Feuchte (%)</label>
+      <input type="number" id="sommerPhiE" step="1" value="70">
+    </div>
+    <div>
+      <label>Sommer: Innentemp. (°C)</label>
+      <input type="number" id="sommerTi" step="0.5" value="12">
+    </div>
+    <div>
+      <label>Sommer: Innen rel. Feuchte (%)</label>
+      <input type="number" id="sommerPhiI" step="1" value="70">
+    </div>
+    <div style="flex:0 0 auto;">
+      <button class="btn-primary" onclick="render()">↻ Sommerfall neu berechnen</button>
+    </div>
+  </div>
+  <p class="hint-text">
+    Standardwerte nach DIN 4108-3 (mittlere sommerliche Randbedingung, Umkehrdiffusion Sommer→Winter).
+  </p>
+</div>
+
+<!-- Eigenes Material -->
+<div class="collapsible-header" id="customToggleHeader" onclick="toggleSection('customToggleContent', this)">
+  <span>🧪 Eigenes Material hinzufügen (optional)</span>
+  <span class="arrow">▼</span>
+</div>
+<div class="collapsible-content" id="customToggleContent">
+  <div class="add-material-box">
+    <div>
+      <label>Eigenes Material (Name)</label>
+      <input type="text" id="customName" placeholder="z. B. Spezialdämmstoff">
+    </div>
+    <div>
+      <label>λ-Wert (W/mK)</label>
+      <input type="number" id="customLambda" step="0.001" placeholder="z. B. 0.032">
+    </div>
+    <div>
+      <label>μ-Wert (Diffusionswiderstand)</label>
+      <input type="number" id="customMu" step="0.1" placeholder="z. B. 1.5">
+    </div>
+    <div style="flex:0 0 auto;">
+      <button class="btn-primary" onclick="addCustomMaterial()">+ Zur Datenbank hinzufügen</button>
+    </div>
+  </div>
+  <p class="hint-text">
+    Eigene Materialien werden nur für diese Sitzung gespeichert und stehen danach in der Materialauswahl der Tabelle zur Verfügung.
+  </p>
+</div>
+
+<h3>Schichtaufbau (2D-Querschnitt)</h3>
+
+<div style="display:flex;">
+  <div style="flex:1;">
+    <div id="layerPreviewWrap">
+      <div class="dim-vertical">
+        <div class="dim-line"></div>
+        <div class="dim-label" id="totalDimLabel">– mm</div>
+      </div>
+      <div id="dimRow"></div>
+      <div id="layerPreview"></div>
+    </div>
+  </div>
+  <div id="layerLegend"></div>
+</div>
+<p style="font-size:12px; color:#888; margin-top:5px;">unten: innen · oben: außen</p>
+
+<div class="result-triple">
+  <div class="result-box result-card" id="resultBox">
+    <div class="result-label">U-Wert des Bauteils</div>
+    <div class="result-value" id="uValue">–</div>
+    <div class="result-sub" id="rTotalLabel"></div>
+  </div>
+
+  <div class="result-box result-card" id="taupunktCard">
+    <div class="result-label">Taupunkt-Prüfung (Glaser)</div>
+    <div class="result-value" id="taupunktStatus">–</div>
+    <div class="result-gm2" id="taupunktMenge"></div>
+    <div class="result-sub" id="taupunktDetail"></div>
+  </div>
+
+<div class="result-box result-card" id="summerCard">
+  <div class="result-label">Sommer-Rücktrocknung (Verdunstung)</div>
+  <div class="result-value" id="summerStatus">–</div>
+  <div class="result-gm2" id="summerMenge"></div>
+  <div class="result-sub" id="summerDetail"></div>
+</div>
+
+  <div class="result-box result-card" id="phaseResultBox">
+    <div class="result-label">Phasenverschiebung</div>
+    <div class="result-value" id="phaseValue">–</div>
+    <div class="result-sub" id="phaseDetailLabel"></div>
+  </div>
+</div>
+
+	<div class="chart-flex" style="display:flex; gap:20px; align-items:flex-start;">
+    <div class="chart-wrap" style="flex:1;">
+      <canvas id="glaserChart" height="110"></canvas>
+    </div>
+    <div class="metrics-panel" id="metricsPanel">
+      <div class="metric-row"><span class="metric-label">sd-Wert (gesamt)</span><span class="metric-value" id="mSdWert">– m</span></div>
+      <div class="metric-row"><span class="metric-label">Bauteildicke</span><span class="metric-value" id="mDicke">– cm</span></div>
+      <div class="metric-row"><span class="metric-label">Flächengewicht</span><span class="metric-value" id="mGewicht">– kg/m²</span></div>
+      <div class="metric-row">
+        <span class="metric-label">Oberflächentemp. innen</span>
+        <span class="metric-value" id="mOberflaeche">– °C</span>
+        <div class="metric-bar"><div class="metric-bar-fill" id="mOberflaecheBar"></div></div>
+      </div>
+      <div class="metric-row"><span class="metric-label">Trocknungsreserve</span><span class="metric-value" id="mTrocknung">– g/m²a</span></div>
+      <div class="metric-row"><span class="metric-label">Wärmespeicherfähigkeit</span><span class="metric-value" id="mSpeicher">– kJ/m²K</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- Template Modal -->
+<div class="modal-overlay" id="templateModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closeTemplateModal()">✕</button>
+    <h2>Standardaufbau wählen</h2>
+
+    <div class="template-cat">🏠 Dach</div>
+    <div class="template-grid">
+      <div class="template-card" onclick="loadTemplate('flachdach')">
+        <h3>Flachdach (Warmdach)</h3>
+        <p>Beton, Dampfsperre, Dämmung, Abdichtung</p>
+      </div>
+      <div class="template-card" onclick="loadTemplate('steildach')">
+        <h3>Steildach (Zwischensparrend.)</h3>
+        <p>Innenverkleidung, Dampfbremse, Dämmung, Unterdeckbahn, Lattung, Eindeckung</p>
+      </div>
+      <div class="template-card" onclick="loadTemplate('steildach_konterlattung')">
+        <h3>Steildach mit Konterlattung</h3>
+        <p>Innenverkleidung, Dampfbremse, Dämmung, Unterdeckbahn,stark belüftete Luftschicht Konterlattung, Eindeckung</p>
+      </div>
+      <div class="template-card" onclick="loadTemplate('umkehrdach')">
+        <h3>Umkehrdach</h3>
+        <p>Abdichtung unter Dämmung, Kiesschüttung</p>
+      </div>
+    </div>
+
+    <div class="template-cat">🧱 Wand</div>
+    <div class="template-grid">
+      <div class="template-card" onclick="loadTemplate('wdvs')">
+        <h3>Massivwand mit WDVS</h3>
+        <p>Innenputz, Mauerwerk, Kleber, WDVS-Dämmung, Außenputz</p>
+      </div>
+      <div class="template-card" onclick="loadTemplate('zweischalig')">
+        <h3>Zweischaliges Mauerwerk</h3>
+        <p>Innenschale, Kerndämmung, Luftschicht, Vormauerziegel</p>
+      </div>
+      <div class="template-card" onclick="loadTemplate('holzstaender')">
+        <h3>Holzständerwand</h3>
+        <p>Innenverkleidung, Dampfbremse, Gefachdämmung, Holzwerkstoffplatte, Fassade</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= MATERIALDATENBANK ================= */
+/* mu = Wasserdampf-Diffusionswiderstandszahl (dimensionslos) */
+/* tauwasserKriterium: 'allgemein' (1,0 kg/m²) | 'kapillarNichtSaugend' (0,5 kg/m²) | 'holzMassiv' (5% Masse) | 'holzwerkstoff' (3% Masse) */
+let materials = {
+ // Dämmstoffe
+"EPS (Styropor) 035": {lambda:0.035, mu:40, cat:"daemmung", rho:20, c:1500, tauwasserKriterium:"allgemein"},
+"EPS (Styropor) 032": {lambda:0.032, mu:40, cat:"daemmung", rho:20, c:1500, tauwasserKriterium:"allgemein"},
+"XPS (Extruderschaum)": {lambda:0.035, mu:100, cat:"daemmung", rho:33, c:1500, tauwasserKriterium:"allgemein"},
+"Mineralwolle (Glaswolle)": {lambda:0.035, mu:1, cat:"daemmung", rho:60, c:1030, tauwasserKriterium:"allgemein"},
+"Mineralwolle (Steinwolle)": {lambda:0.035, mu:1, cat:"daemmung", rho:100, c:1030, tauwasserKriterium:"allgemein"},
+"Holzfaserdämmplatte": {lambda:0.040, mu:5, cat:"daemmung", rho:160, c:2100, tauwasserKriterium:"allgemein"},
+"Zellulosedämmung": {lambda:0.040, mu:2, cat:"daemmung", rho:50, c:1900, tauwasserKriterium:"allgemein"},
+"PUR/PIR-Hartschaum": {lambda:0.024, mu:60, cat:"daemmung", rho:32, c:1500, tauwasserKriterium:"allgemein"},
+"Schaumglas": {lambda:0.041, mu:100000, cat:"daemmung", rho:120, c:840, tauwasserKriterium:"kapillarNichtSaugend"},
+"Kork-Dämmplatte": {lambda:0.040, mu:5, cat:"daemmung", rho:150, c:1800, tauwasserKriterium:"allgemein"},
+"Hanfdämmung": {lambda:0.040, mu:2, cat:"daemmung", rho:40, c:1600, tauwasserKriterium:"allgemein"},
+"Vakuumdämmplatte (VIP)": {lambda:0.007, mu:100000, cat:"daemmung", rho:180, c:800, tauwasserKriterium:"kapillarNichtSaugend"},
+"Perlite-Schüttung": {lambda:0.045, mu:3, cat:"daemmung", rho:100, c:1000, tauwasserKriterium:"allgemein"},
+"Kerndämmung (Einblasdämmung)": {lambda:0.032, mu:2, cat:"daemmung", rho:30, c:1500, tauwasserKriterium:"allgemein"},
+
+// Mauerwerk / Steine
+"Vollziegel": {lambda:0.68, mu:10, cat:"mauerwerk", rho:1800, c:1000, tauwasserKriterium:"allgemein"},
+"Hochlochziegel (HLZ)": {lambda:0.44, mu:10, cat:"mauerwerk", rho:1200, c:1000, tauwasserKriterium:"allgemein"},
+"Poroton-Ziegel (hochwärmed.)": {lambda:0.09, mu:5, cat:"mauerwerk", rho:700, c:1000, tauwasserKriterium:"allgemein"},
+"Kalksandstein (KS)": {lambda:0.99, mu:15, cat:"mauerwerk", rho:1800, c:1000, tauwasserKriterium:"allgemein"},
+"Porenbeton (Gasbeton)": {lambda:0.16, mu:5, cat:"mauerwerk", rho:500, c:1000, tauwasserKriterium:"allgemein"},
+"Leichtbeton-Hohlblock": {lambda:0.35, mu:10, cat:"mauerwerk", rho:1000, c:1000, tauwasserKriterium:"allgemein"},
+"Vormauerziegel (Klinker)": {lambda:0.81, mu:20, cat:"mauerwerk", rho:2000, c:1000, tauwasserKriterium:"allgemein"},
+"Bruchstein/Natursteinmauerwerk": {lambda:2.30, mu:30, cat:"mauerwerk", rho:2600, c:1000, tauwasserKriterium:"allgemein"},
+
+// Beton
+"Stahlbeton": {lambda:2.30, mu:100, cat:"beton", rho:2300, c:1000, tauwasserKriterium:"allgemein"},
+"Normalbeton": {lambda:2.10, mu:100, cat:"beton", rho:2200, c:1000, tauwasserKriterium:"allgemein"},
+"Leichtbeton": {lambda:0.55, mu:10, cat:"beton", rho:1000, c:1000, tauwasserKriterium:"allgemein"},
+"Estrich (Zement)": {lambda:1.40, mu:20, cat:"beton", rho:2000, c:1000, tauwasserKriterium:"allgemein"},
+"Estrich (Anhydrit)": {lambda:1.20, mu:15, cat:"beton", rho:2100, c:1000, tauwasserKriterium:"allgemein"},
+
+// Holz
+"Vollholz (Nadelholz)": {lambda:0.13, mu:40, cat:"holz", rho:450, c:1600, tauwasserKriterium:"holzMassiv"},
+"Vollholz (Laubholz)": {lambda:0.20, mu:50, cat:"holz", rho:700, c:1600, tauwasserKriterium:"holzMassiv"},
+"Konterlattung (Nadelholz)": {lambda:0.13, mu:40, cat:"holz", rho:450, c:1600, tauwasserKriterium:"holzMassiv"},
+"OSB-Platte": {lambda:0.13, mu:150, cat:"holz", rho:650, c:1700, tauwasserKriterium:"holzwerkstoff"},
+"Spanplatte": {lambda:0.14, mu:50, cat:"holz", rho:600, c:1700, tauwasserKriterium:"holzwerkstoff"},
+"Sperrholz": {lambda:0.15, mu:150, cat:"holz", rho:500, c:1600, tauwasserKriterium:"holzwerkstoff"},
+"Gipsfaserplatte": {lambda:0.32, mu:10, cat:"holz", rho:1150, c:1000, tauwasserKriterium:"allgemein"},
+
+// Putz / Gips
+"Innenputz (Kalkzement)": {lambda:0.87, mu:15, cat:"putz", rho:1800, c:1000, tauwasserKriterium:"allgemein"},
+"Außenputz (Mineralisch)": {lambda:0.87, mu:20, cat:"putz", rho:1800, c:1000, tauwasserKriterium:"allgemein"},
+"Gipsputz": {lambda:0.35, mu:10, cat:"putz", rho:1200, c:1000, tauwasserKriterium:"allgemein"},
+"Gipskartonplatte": {lambda:0.25, mu:10, cat:"putz", rho:850, c:1000, tauwasserKriterium:"allgemein"},
+"Armierungsmörtel (WDVS)": {lambda:0.80, mu:25, cat:"putz", rho:1300, c:1000, tauwasserKriterium:"allgemein"},
+"Klebemörtel (WDVS)": {lambda:0.80, mu:25, cat:"putz", rho:1300, c:1000, tauwasserKriterium:"allgemein"},
+
+// Folien / Bahnen
+"Dampfsperre (PE-Folie)": {lambda:0.35, mu:100000, cat:"folie", rho:130, c:2100, tauwasserKriterium:"kapillarNichtSaugend"},
+"Dampfbremse (sd-variabel)": {lambda:0.35, mu:5000, cat:"folie", rho:130, c:2100, tauwasserKriterium:"kapillarNichtSaugend"},
+"Bitumen-Abdichtungsbahn": {lambda:0.17, mu:50000, cat:"folie", rho:1200, c:1000, tauwasserKriterium:"kapillarNichtSaugend"},
+"Unterdeckbahn (diffusionsoffen)": {lambda:0.17, mu:50, cat:"folie", rho:130, c:2100, tauwasserKriterium:"allgemein"},
+"EPDM-Dachbahn": {lambda:0.25, mu:100000, cat:"folie", rho:1200, c:1000, tauwasserKriterium:"kapillarNichtSaugend"},
+
+// Metall / Sonstiges
+"Stahlblech": {lambda:50, mu:1000000, cat:"metall", rho:7800, c:450, tauwasserKriterium:"kapillarNichtSaugend"},
+"Aluminium": {lambda:160, mu:1000000, cat:"metall", rho:2700, c:880, tauwasserKriterium:"kapillarNichtSaugend"},
+"Luftschicht (unbelüftet, 2cm)": {lambda:0.18, mu:1, cat:"sonst", rho:1.3, c:1008, tauwasserKriterium:"allgemein"},
+"Luftschicht (stark belüftet)": {lambda:0.18, mu:1, cat:"sonst", rho:1.3, c:1008, starkBelueftet:true, tauwasserKriterium:"allgemein"},
+"Kiesschüttung": {lambda:0.70, mu:2, cat:"sonst", rho:1800, c:1000, tauwasserKriterium:"allgemein"},
+"Ziegeleindeckung (Dachziegel)": {lambda:0.85, mu:70, cat:"sonst", rho:2000, c:1000, tauwasserKriterium:"allgemein"},
+"Bitumenschindeln": {lambda:0.23, mu:10000, cat:"sonst", rho:1200, c:1000, tauwasserKriterium:"allgemein"}
+};
+
+/* ================= STANDARDAUFBAUTEN ================= */
+const templates = {
+  flachdach: [
+    ["Stahlbeton", 20],
+    ["Dampfsperre (PE-Folie)", 0.2],
+    ["EPS (Styropor) 032", 18],
+    ["Bitumen-Abdichtungsbahn", 0.5]
+  ],
+  steildach: [
+    ["Gipskartonplatte", 1.25],
+    ["Dampfbremse (sd-variabel)", 0.2],
+    ["Mineralwolle (Glaswolle)", 20],
+    ["Unterdeckbahn (diffusionsoffen)", 0.3],
+    ["Vollholz (Nadelholz)", 2.4],
+    ["Ziegeleindeckung (Dachziegel)", 2]
+  ],
+  steildach_konterlattung: [
+    ["Gipskartonplatte", 1.25],
+    ["Dampfbremse (sd-variabel)", 0.02],
+    ["Mineralwolle (Glaswolle)", 22],
+    ["Unterdeckbahn (diffusionsoffen)", 0.03],
+    ["Luftschicht (stark belüftet)", 4],
+    ["Konterlattung (Nadelholz)", 4],
+    ["Ziegeleindeckung (Dachziegel)", 2]
+  ],
+  umkehrdach: [
+    ["Stahlbeton", 20],
+    ["Bitumen-Abdichtungsbahn", 0.5],
+    ["XPS (Extruderschaum)", 16],
+    ["Kiesschüttung", 5]
+  ],
+  wdvs: [
+    ["Innenputz (Kalkzement)", 1.5],
+    ["Kalksandstein (KS)", 17.5],
+    ["Klebemörtel (WDVS)", 0.5],
+    ["EPS (Styropor) 032", 16],
+    ["Armierungsmörtel (WDVS)", 0.5],
+    ["Außenputz (Mineralisch)", 0.5]
+  ],
+  zweischalig: [
+    ["Innenputz (Kalkzement)", 1.5],
+    ["Kalksandstein (KS)", 17.5],
+    ["Kerndämmung (Einblasdämmung)", 8],
+    ["Luftschicht (unbelüftet, 2cm)", 2],
+    ["Vormauerziegel (Klinker)", 11.5]
+  ],
+  holzstaender: [
+    ["Gipskartonplatte", 1.25],
+    ["Dampfbremse (sd-variabel)", 0.2],
+    ["Mineralwolle (Steinwolle)", 16],
+    ["Holzfaserdämmplatte", 6],
+    ["OSB-Platte", 1.5]
+  ]
+};
+/* ================= STATE ================= */
+let layers = [];
+
+function addLayer(name, thickness) {
+  const matName = name || Object.keys(materials)[0];
+  const mat = materials[matName];
+  layers.push({
+    name: matName,
+    thickness: thickness || 10,
+    lambda: mat.lambda,
+    mu: mat.mu,
+    rho: mat.rho,
+    c: mat.c
+  });
+  render();
+}
+function removeLayer(index) {
+  layers.splice(index, 1);
+  render();
+}
+
+function updateLayer(index, field, value) {
+  if (field === "thickness") {
+    layers[index].thickness = parseFloat(value) || 0;
+  } else if (field === "name") {
+    layers[index].name = value;
+    const mat = materials[value];
+    if (mat) {
+      layers[index].lambda = mat.lambda;
+      layers[index].mu = mat.mu;
+      layers[index].rho = mat.rho;
+      layers[index].c = mat.c;
+    }
+  } else if (field === "lambda") {
+    layers[index].lambda = value;
+  } else if (field === "mu") {
+    layers[index].mu = value;
+  } else if (field === "rho") {
+    layers[index].rho = value;
+  } else if (field === "c") {
+    layers[index].c = value;
+  }
+  render();
+}
+function loadTemplate(key) {
+  layers = templates[key].map(l => {
+    const mat = materials[l[0]];
+    return { name: l[0], thickness: l[1], lambda: mat.lambda, mu: mat.mu, rho: mat.rho, c: mat.c };
+  });
+  closeTemplateModal();
+  render();
+}
+function openTemplateModal() { document.getElementById('templateModal').classList.add('active'); }
+function closeTemplateModal() { document.getElementById('templateModal').classList.remove('active'); }
+
+/* ================= RENDERTABLE MIT SELECT ================= */
+function renderTable() {
+  const body = document.getElementById('layerBody');
+  body.innerHTML = "";
+
+  if (layers.length === 0) {
+    body.innerHTML = '<tr><td colspan="9" style="color:#999;">Noch keine Schichten hinzugefügt.</td></tr>';
+    return;
+  }
+
+  layers.forEach((layer, index) => {
+    const options = Object.keys(materials).map(m =>
+      `<option value="${m}" ${m === layer.name ? "selected" : ""}>${m}</option>`
+    ).join("");
+
+    const row = document.createElement('tr');
+    row.innerHTML = `
+      <td class="layer-name">
+        <select onchange="updateLayer(${index}, 'name', this.value)">${options}</select>
+      </td>
+     	<td>
+  	<input type="number" step="0.1" value="${cmToMm(layer.thickness)}" onchange="updateLayer(${index}, 'thickness', parseFloat(this.value)/10)">
+	</td>
+      <td>
+        <input type="number" step="0.001" value="${layer.lambda}" onchange="updateLayer(${index}, 'lambda', parseFloat(this.value))">
+      </td>
+      <td>
+        <input type="number" step="1" value="${layer.mu}" onchange="updateLayer(${index}, 'mu', parseFloat(this.value))">
+	</td>	
+	<td>
+  	<input type="number" step="1" value="${layer.rho}" onchange="updateLayer(${index}, 'rho', parseFloat(this.value))">
+	</td>
+	<td>
+  	<input type="number" step="1" value="${layer.c}" onchange="updateLayer(${index}, 'c', parseFloat(this.value))">
+	</td>
+      
+      <td>${((layer.thickness / 100) / layer.lambda).toFixed(3)}</td>
+      <td>${(layer.mu * (layer.thickness / 100)).toFixed(2)}</td>
+      <td><button class="del-btn" onclick="removeLayer(${index})">✕</button></td>
+    `;
+    body.appendChild(row);
+  });
+}
+function toggleSection(contentId, headerEl) {
+  const content = document.getElementById(contentId);
+  headerEl.classList.toggle('open');
+  content.classList.toggle('open');
+  if (content.classList.contains('open')) {
+    content.style.maxHeight = content.scrollHeight + 'px';
+  } else {
+    content.style.maxHeight = '0';
+  }
+}
+/* ================= SPARRENANTEIL-HILFSFUNKTION ================= */
+function getSparrenanteil() {
+  const aktivEl = document.getElementById('sparrenAktiv');
+  if (!aktivEl || !aktivEl.checked) return null;   // Abbruch, wenn Checkbox nicht aktiv
+
+  const bEl = document.getElementById('sparrenBreite');
+  const aEl = document.getElementById('sparrenAbstand');
+  const lEl = document.getElementById('sparrenLambda');
+  if (!bEl || !aEl || !lEl) return null;
+
+  const breite = parseFloat(bEl.value);
+  const abstand = parseFloat(aEl.value);
+  const lambdaHolz = parseFloat(lEl.value);
+
+  // Grundprüfung: Zahlen vorhanden und positiv
+  if (!breite || !abstand || breite <= 0 || abstand <= 0) return null;
+
+  // NEU: Plausibilitätsprüfung Sparrenbreite (realistisch: 3–20 cm)
+  if (breite < 3 || breite > 20) {
+    console.warn('Sparrenbreite unplausibel (' + breite + ' cm) – Sparrenanteil wird ignoriert.');
+    return null;
+  }
+
+  // NEU: Plausibilitätsprüfung Sparrenabstand (realistisch: 30–120 cm)
+  if (abstand < 30 || abstand > 120) {
+    console.warn('Sparrenabstand unplausibel (' + abstand + ' cm) – Sparrenanteil wird ignoriert.');
+    return null;
+  }
+
+  // NEU: Sparrenbreite darf nicht größer als der Abstand sein
+  if (breite >= abstand) {
+    console.warn('Sparrenbreite ≥ Sparrenabstand – geometrisch unmöglich, wird ignoriert.');
+    return null;
+  }
+
+  // NEU: Plausibilitätsprüfung λ-Wert Holz (realistisch: 0,09–0,25 W/mK)
+  if (!lambdaHolz || lambdaHolz < 0.09 || lambdaHolz > 0.25) {
+    console.warn('λ-Wert Sparrenholz unplausibel (' + lambdaHolz + ') – Sparrenanteil wird ignoriert.');
+    return null;
+  }
+
+  const fSparren = breite / abstand;       // Flächenanteil Sparren
+  const fGefach = 1 - fSparren;            // Flächenanteil Dämmung
+  return { fSparren, fGefach, lambdaHolz };
+}
+
+/* ================= U-WERT: mit Sparrenanteil (oberer/unterer Grenzwert) ================= */
+function calculateUValue() {
+  const rsi = 0.13, rse = 0.04;
+  let sparren = getSparrenanteil();
+
+  // Sparren-Ergebnis auf Plausibilität prüfen, sonst verwerfen
+  if (sparren) {
+    if (sparren.fSparren <= 0 || sparren.fSparren >= 1 || sparren.fGefach <= 0) {
+      console.warn('Sparrenanteil unplausibel (fSparren=' + sparren.fSparren.toFixed(2) + '), Berechnung wird ohne Sparrenanteil durchgeführt.');
+      sparren = null;
+    }
+  }
+
+  function isGefachSchicht(layer) {
+    const mat = materials[layer.name];
+    return mat && mat.cat === "daemmung";
+  }
+  function isBelueftet(layer) {
+    const mat = materials[layer.name];
+    return mat && mat.starkBelueftet === true;
+  }
+
+  let rUnten = rsi;
+  let stopUnten = false;
+  let rSparrenPfad = rsi;
+  let rGefachPfad = rsi;
+
+  layers.forEach(layer => {
+    if (isBelueftet(layer)) {
+      stopUnten = true;
+      return;
+    }
+    if (stopUnten) return;
+
+    const rSchicht = (layer.thickness / 100) / layer.lambda;
+    rUnten += rSchicht;
+
+    if (sparren && isGefachSchicht(layer)) {
+      const rGefach = (layer.thickness / 100) / layer.lambda;
+      const rSparren = (layer.thickness / 100) / sparren.lambdaHolz;
+      rGefachPfad += rGefach;
+      rSparrenPfad += rSparren;
+    } else {
+      rSparrenPfad += rSchicht;
+      rGefachPfad += rSchicht;
+    }
+  });
+
+  rUnten += rse;
+  rSparrenPfad += rse;
+  rGefachPfad += rse;
+
+  const uUnten = 1 / rUnten;
+
+  let uValue, rTotalRaw, hinweisSparren = "";
+  if (sparren) {
+    const uSparrenPfad = 1 / rSparrenPfad;
+    const uGefachPfad = 1 / rGefachPfad;
+    const uOben = sparren.fSparren * uSparrenPfad + sparren.fGefach * uGefachPfad;
+
+    uValue = (uOben + uUnten) / 2;
+    rTotalRaw = 1 / uValue;
+    hinweisSparren = ` | Sparrenanteil: ${(sparren.fSparren*100).toFixed(1)} % · Gefachanteil: ${(sparren.fGefach*100).toFixed(1)} %`;
+  } else {
+    uValue = uUnten;
+    rTotalRaw = rUnten;
+  }
+
+  document.getElementById('uValue').textContent = uValue.toFixed(3) + " W/(m²K)";
+  document.getElementById('rTotalLabel').textContent =
+    "R-Gesamt: " + rTotalRaw.toFixed(3) + " m²K/W" + hinweisSparren;
+
+  const box = document.getElementById('resultBox');
+  box.className = 'result-box ' + (uValue <= 0.24 ? 'ok' : 'warn');
+
+  return { uValue, rTotalRaw, rsi, rse };
+}
+/* ================= TAUPUNKT / GLASER-VERFAHREN ================= */
+function calculateDewPoint(rTotalRaw) {
+  // Randbedingungen (Winter, Standardnorm)
+  const tiIn = 20;   // Innentemperatur °C
+  const teOut = -10; // Außentemperatur °C
+  const phiIn = 0.50; // relative Feuchte innen
+  const phiOut = 0.80; // relative Feuchte außen
+
+  const rsi = 0.13, rse = 0.04;
+
+  // Sättigungsdampfdruck nach Magnus-Formel
+  function pSat(t) {
+    return 611.2 * Math.exp((17.62 * t) / (243.12 + t));
+  }
+
+  // --- Temperaturverlauf über die Schichten (inkl. Übergangswiderstände) ---
+  let points = [{ name: "Innenoberfläche", r: rsi, sd: 0 }];
+  let rCum = rsi;
+  layers.forEach(layer => {
+    rCum += (layer.thickness / 1000) / layer.lambda;
+    points.push({
+      name: layer.name,
+      r: rCum,
+      sd: layer.mu * (layer.thickness / 1000) // sd-Wert = μ * Dicke [m]
+    });
+  });
+  rCum += rse;
+  points.push({ name: "Außenoberfläche", r: rCum, sd: 0 });
+
+  const deltaT = tiIn - teOut;
+
+  const temps = points.map(p => tiIn - (deltaT * p.r) / rCum);
+
+  // --- Sättigungsdruck an jedem Punkt ---
+  const pSatValues = temps.map(t => pSat(t));
+
+  // --- Gesamter sd-Wert (Diffusionswiderstand) ---
+  let sdCum = 0;
+  const sdCumValues = [0];
+  for (let i = 1; i < points.length; i++) {
+    sdCum += points[i].sd;
+    sdCumValues.push(sdCum);
+  }
+  const sdTotal = sdCum;
+
+  // --- Partialdruckverlauf (linear zwischen pi und pe entlang sd) ---
+  const piIn = phiIn * pSat(tiIn);
+  const peOut = phiOut * pSat(teOut);
+
+  const pValues = sdCumValues.map(sd => piIn - ((piIn - peOut) * sd) / sdTotal);
+
+  // --- Prüfen auf Tauwasserausfall: p > pSat an irgendeinem Punkt ---
+  let condensationPoints = [];
+  for (let i = 0; i < points.length; i++) {
+    if (pValues[i] > pSatValues[i]) {
+      condensationPoints.push({
+        layer: points[i].name,
+        p: pValues[i],
+        pSat: pSatValues[i]
+      });
+    }
+  }
+
+  const hasCondensation = condensationPoints.length > 0;
+
+    // --- Tauwassermenge berechnen (vereinfachtes Glaser-Verfahren) ---
+  // Bei Kondensation wird die Kurve zwischen erstem und letztem Schnittpunkt
+  // durch die Tangenten an die Sättigungsdampfkurve ersetzt (Diffusionsstrom-Differenz).
+  let condensateAmount_gm2 = 0;
+  let condensationLayerIsWood = false;
+  const periodSeconds = 90 * 24 * 3600; // Normwinterperiode ~90 Tage
+  const deltaP0 = 2.0e6; // Pa*m²*h/kg -> vereinfachter Diffusionsleitkoeffizient (Wasserdampf), delta_0 = 2*10^-10 kg/(m*h*Pa) üblich; hier vereinfachte Praxis-Konstante
+
+    if (hasCondensation) {
+    const iStart = points.findIndex((p, i) => pValues[i] > pSatValues[i]);
+    let iEnd = iStart;
+    for (let i = iStart; i < points.length; i++) {
+      if (pValues[i] > pSatValues[i]) iEnd = i;
+    }
+
+    const sdLeft = sdCumValues[iStart];
+    const g1 = sdLeft > 0 ? (piIn - pSatValues[iStart]) / sdLeft : 0;
+
+    const sdRight = sdTotal - sdCumValues[iEnd];
+    const g2 = sdRight > 0 ? (pSatValues[iEnd] - peOut) / sdRight : 0;
+
+    const deltaG = Math.max(g2 - g1, 0);
+
+    const delta0 = 2e-10; // kg/(m*h*Pa), Wasserdampf-Diffusionsleitkoeffizient Luft
+    const gVap = delta0 * deltaG; // kg/(m²*h)
+    condensateAmount_gm2 = gVap * 1000 * (90 * 24); // g/m² über 90 Tage Normwinterperiode
+
+    const condLayerNames = points.slice(iStart, iEnd + 1).map(p => p.name.toLowerCase());
+    condensationLayerIsWood = condLayerNames.some(n =>
+      n.includes("holz") || n.includes("osb") || n.includes("spanplatte") || n.includes("sparren")
+    );
+  }
+
+    // --- Bewertung nach DIN 4108-3 ---
+  let bewertung = "unkritisch";
+  let bewertungText = "Kein Tauwasserausfall zu erwarten. Die Konstruktion ist bauphysikalisch unbedenklich.";
+  let bewertungFarbe = "success";
+  let grenzwertKgm2 = null;
+  let kriteriumText = "";
+
+  if (hasCondensation) {
+    // Kondensationsebene ermitteln (erste betroffene Schicht mit Material-Info)
+    const iStart = points.findIndex((p, i) => pValues[i] > pSatValues[i]);
+    const condensationLayer = layers[iStart - 1]; // -1 weil points[0] = Innenoberfläche
+    const material = condensationLayer ? materials[condensationLayer.name] : null;
+    const kriterium = material?.tauwasserKriterium || "allgemein";
+
+    const condensateAmountKg = condensateAmount_gm2 / 1000;
+
+    switch (kriterium) {
+      case "kapillarNichtSaugend":
+        grenzwertKgm2 = 0.5;
+        kriteriumText = "Kapillar nicht wasseraufnehmende Schicht (z. B. Dampfsperre, Glas, Metall)";
+        break;
+      case "holzMassiv":
+        grenzwertKgm2 = 1.0;
+        kriteriumText = "Angrenzend an Massivholz (zusätzlich: Feuchteerhöhung < 5 % Masseanteil beachten)";
+        break;
+      case "holzwerkstoff":
+        grenzwertKgm2 = 1.0;
+        kriteriumText = "Angrenzend an Holzwerkstoff (zusätzlich: Feuchteerhöhung < 3 % Masseanteil beachten)";
+        break;
+      default:
+        grenzwertKgm2 = 1.0;
+        kriteriumText = "Allgemeine Dach-/Wandkonstruktion";
+    }
+
+    if (condensateAmountKg <= grenzwertKgm2) {
+      bewertung = "tolerierbar";
+      bewertungText = `Es fällt Tauwasser an (${condensateAmount_gm2.toFixed(1)} g/m² in der Normwinterperiode), ` +
+        `liegt aber unterhalb des zulässigen Grenzwerts von ${(grenzwertKgm2 * 1000).toFixed(0)} g/m² nach DIN 4108-3. ` +
+        `Kriterium: ${kriteriumText}. ` +
+        `Das Kondensat ist in der Regel unschädlich, sofern eine ausreichende Rücktrocknung im Sommerhalbjahr sichergestellt ist ` +
+        `(Grundregel: Sommerverdunstung mV muss größer sein als Wintertauwassermenge mT).`;
+      bewertungFarbe = "warning";
+    } else {
+      bewertung = "kritisch";
+      bewertungText = `Die berechnete Tauwassermenge von ${condensateAmount_gm2.toFixed(1)} g/m² überschreitet ` +
+        `den zulässigen Grenzwert von ${(grenzwertKgm2 * 1000).toFixed(0)} g/m² nach DIN 4108-3. ` +
+        `Kriterium: ${kriteriumText}. ` +
+        `Es besteht Gefahr von Feuchteschäden, Schimmelbildung oder Bauteilzerstörung. Konstruktion muss überarbeitet werden ` +
+        `(z. B. Dampfbremse, Dämmstoffwahl, Schichtreihenfolge anpassen).`;
+      bewertungFarbe = "danger";
+    }
+  }
+  
+let holzMassePruefung = null;
+
+  if (hasCondensation && (bewertung === "tolerierbar" || bewertung === "kritisch")) {
+    const iStart = points.findIndex((p, i) => pValues[i] > pSatValues[i]);
+    const condensationLayer = layers[iStart - 1];
+    const material = condensationLayer ? materials[condensationLayer.name] : null;
+    const kriterium = material?.tauwasserKriterium || "allgemein";
+
+    if (kriterium === "holzMassiv" || kriterium === "holzwerkstoff") {
+      const grenzwertMasse = kriterium === "holzMassiv" ? 5 : 3; // % Masseanteil
+      const rohdichte = material.roh || 500; // kg/m³, Fallback falls nicht vorhanden
+      const dicke_m = condensationLayer.thickness / 1000;
+      const masseProM2 = rohdichte * dicke_m; // kg/m²
+
+      const feuchteErhoehungProzent = (condensateAmount_gm2 / 1000 / masseProM2) * 100;
+
+      holzMassePruefung = {
+        grenzwertProzent: grenzwertMasse,
+        istProzent: feuchteErhoehungProzent,
+        kritisch: feuchteErhoehungProzent > grenzwertMasse,
+        materialName: condensationLayer.name
+      };
+
+      if (holzMassePruefung.kritisch) {
+        bewertung = "kritisch";
+        bewertungFarbe = "danger";
+        bewertungText += ` ZUSÄTZLICH KRITISCH: Die Feuchteerhöhung im Holz beträgt ${feuchteErhoehungProzent.toFixed(1)} % ` +
+          `Masseanteil und überschreitet den zulässigen Grenzwert von ${grenzwertMasse} % (Holzfeuchteschutz nach DIN 68800).`;
+      }
+    }
+}
+return {
+  hasCondensation,
+  condensateAmount_gm2,
+  bewertung,
+  bewertungText,
+  bewertungFarbe,
+  grenzwertKgm2,
+  kriteriumText,
+  holzMassePruefung,
+  condensationPoints,
+  condensationLayerIsWood,
+  points,
+  temps,
+  pValues,
+  pSatValues,
+  sdCumValues,
+  sdTotal
+};
+}
+/* ================= SOMMERVERDUNSTUNG (Umkehrdiffusion) ================= */
+function calculateSummerEvaporation(winterCondensateGm2, condensationLayerIsWood, iStartWinter, iEndWinter) {
+  // Randbedingungen Sommer: außen warm/feucht -> innen kühler (Diffusionsrichtung kehrt sich um)
+  const teIn = parseFloat(document.getElementById('sommerTe')?.value) || 12;
+  const phiE = (parseFloat(document.getElementById('sommerPhiE')?.value) || 70) / 100;
+  const tiIn = parseFloat(document.getElementById('sommerTi')?.value) || 12;
+  const phiI = (parseFloat(document.getElementById('sommerPhiI')?.value) || 70) / 100;
+
+  function pSat(t) { return 611.2 * Math.exp((17.62 * t) / (243.12 + t)); }
+
+  // Punkte wie im Winterfall aufbauen, aber Randbedingungen vertauscht:
+  // außen (Position "Außenoberfläche") wird zur warmen/feuchten Seite
+  let points = [{ name: "Innenoberfläche", sd: 0 }];
+  layers.forEach(layer => {
+    points.push({ name: layer.name, sd: layer.mu * (layer.thickness / 1000) });
+  });
+  points.push({ name: "Außenoberfläche", sd: 0 });
+
+  let sdCum = 0;
+  const sdCumValues = [0];
+  for (let i = 1; i < points.length; i++) {
+    sdCum += points[i].sd;
+    sdCumValues.push(sdCum);
+  }
+  const sdTotal = sdCum;
+
+  // Sommer: Dampfdruck von außen (warm) nach innen (kühl) treibend
+  const peSommer = phiE * pSat(teIn); // außen = Quelle der Feuchte im Sommer
+  const piSommer = phiI * pSat(tiIn);
+
+  const pValues = sdCumValues.map(sd => peSommer - ((peSommer - piSommer) * sd) / sdTotal);
+
+  // Verdunstungspotential mit gleichem Diffusionsleitkoeffizienten wie im Winter
+  const delta0 = 2e-10; // kg/(m*h*Pa)
+  const periodTage = 90; // Sommerperiode ca. 90 Tage (Mai-Sept, vereinfachte Norm-Annahme)
+
+  // Maximale Verdunstungsrate = Diffusionsstrom über den gesamten Querschnitt
+  // ohne Sättigungsgrenze zu überschreiten (vereinfachtes Verfahren)
+  const gVap = delta0 * Math.abs(peSommer - piSommer) / sdTotal; // kg/(m²*h)
+  const evaporation_gm2 = gVap * 1000 * (periodTage * 24); // g/m² über Sommerperiode
+
+  const kannVerdunsten = evaporation_gm2 >= winterCondensateGm2;
+
+  return {
+    evaporation_gm2,
+    winterCondensateGm2,
+    kannVerdunsten,
+    condensationLayerIsWood,
+    ueberschuss_gm2: evaporation_gm2 - winterCondensateGm2
+  };
+}
+
+/* ================= 2D-DARSTELLUNG: dynamisch & optisch optimiert ================= */
+function computeDisplayHeights(totalThicknessCm) {
+  // Komprimierte Skala: sqrt-Verteilung sorgt dafür, dass dünne Schichten
+  // nicht verschwinden und dicke Schichten nicht alles dominieren.
+  const raw = layers.map(l => Math.sqrt(l.thickness));
+  const rawSum = raw.reduce((a, b) => a + b, 0);
+
+  // Mindestanteil pro Schicht (damit jede Schicht immer sichtbar/lesbar bleibt)
+  const minShare = 0.045; // 4.5% der Gesamthöhe als Minimum
+  let shares = raw.map(r => r / rawSum);
+
+  // Mindestanteil erzwingen, Rest proportional von den größeren Schichten abziehen
+  let deficit = 0;
+  shares = shares.map(s => {
+    if (s < minShare) { deficit += (minShare - s); return minShare; }
+    return s;
+  });
+  if (deficit > 0) {
+    const flexIdx = shares.map((s, i) => ({ s, i })).filter(o => o.s > minShare);
+    const flexSum = flexIdx.reduce((a, o) => a + o.s, 0);
+    flexIdx.forEach(o => { shares[o.i] -= deficit * (o.s / flexSum); });
+  }
+
+  // Normieren auf exakt 100%
+  const sum = shares.reduce((a, b) => a + b, 0);
+  return shares.map(s => (s / sum) * 100);
+}
+
+function renderPreview(dewResult) {
+  const wrap = document.getElementById('layerPreviewWrap');
+  const preview = document.getElementById('layerPreview');
+  const dimRow = document.getElementById('dimRow');
+  const legend = document.getElementById('layerLegend');
+  const totalDimLabel = document.getElementById('totalDimLabel');
+  preview.innerHTML = "";
+  dimRow.innerHTML = "";
+  legend.innerHTML = "";
+  if (layers.length === 0) return;
+
+  if (dewResult && dewResult.hasCondensation && dewResult.condensateAmount_gm2 <= 1) {
+    dewResult.hasCondensation = false;
+    dewResult.bewertung = 'unkritisch';
+    dewResult.bewertungFarbe = 'success';
+    dewResult.bewertungText = 'Rechnerisch kein relevantes Tauwasser (Glaser-Verfahren).';
+  }
+
+  const totalThicknessCm = layers.reduce((sum, l) => sum + l.thickness, 0);
+  const totalThicknessMm = cmToMm(totalThicknessCm);
+  totalDimLabel.textContent = (Number.isInteger(totalThicknessMm) ? totalThicknessMm : totalThicknessMm.toFixed(1)) + " mm";
+
+  // Verfügbare Höhe im Container ermitteln (dynamisch, abzüglich Innenabstand)
+  const availableHeight = Math.max(wrap.clientHeight - 40, 200);
+
+  // Zeichenhöhe: bei wenigen Schichten nicht die volle Boxhöhe erzwingen,
+  // sondern eine optisch ausgewogene Höhe wählen (60–100% der verfügbaren Höhe je nach Schichtanzahl)
+  const fillFactor = Math.min(1, 0.55 + layers.length * 0.06);
+  const drawHeight = Math.round(availableHeight * fillFactor);
+  preview.style.height = drawHeight + 'px';
+
+  const displayShares = computeDisplayHeights(totalThicknessCm); // in %
+
+  const matClass = {
+    daemmung:'mat-daemmung', mauerwerk:'mat-mauerwerk', beton:'mat-beton',
+    holz:'mat-holz', putz:'mat-putz', folie:'mat-folie', metall:'mat-metall', sonst:'mat-sonst'
+  };
+
+  // Kompaktmodus: wenn eine Schicht sehr wenig Pixelhöhe bekäme, Nummern verkleinern
+  const isCompact = layers.some(() => (drawHeight / layers.length) < 26) || layers.length > 6;
+
+  layers.forEach((layer, index) => {
+    const num = index + 1;
+    const heightPercent = displayShares[index];
+    const thicknessMmVal = cmToMm(layer.thickness);
+    const thicknessMm = Number.isInteger(thicknessMmVal) ? thicknessMmVal : thicknessMmVal.toFixed(1);
+    const isCondensing = dewResult?.hasCondensation &&
+      dewResult.condensationPoints.some(c => c.layer === layer.name);
+
+    const cat = materials[layer.name] ? materials[layer.name].cat : 'sonst';
+    const div = document.createElement('div');
+    div.className = 'layer-block ' + (matClass[cat] || 'mat-sonst') + (isCondensing ? ' condensation' : '') + (isCompact ? ' compact' : '');
+    div.style.height = heightPercent + '%';
+    div.innerHTML = `<span class="num-badge">${num}</span>`;
+    preview.appendChild(div);
+
+    const seg = document.createElement('div');
+    seg.className = 'dim-segment';
+    seg.style.height = heightPercent + '%';
+    seg.innerHTML = `<div class="dim-hline"></div><div class="dim-mm">${thicknessMm}</div>`;
+    dimRow.appendChild(seg);
+
+    const item = document.createElement('div');
+    item.className = 'legend-item';
+    item.innerHTML = `
+      <div class="legend-num">${num}</div>
+      <div class="legend-text">
+        <b>${layer.name}</b>
+        <span>${thicknessMm} mm (real)${isCondensing ? ' · 💧 Kondensation' : ''}</span>
+      </div>
+    `;
+    legend.appendChild(item);
+  });
+}/* ================= PHASENVERSCHIEBUNG (periodisches Verfahren) ================= */
+function calculatePhaseShift() {
+  const periodT = 24 * 3600; // Schwingungsdauer: 24h in Sekunden (Tagesgang)
+  let totalPhaseShiftHours = 0;
+  let totalDamping = 1;
+  const layerResults = [];
+
+  layers.forEach(layer => {
+    const d = layer.thickness / 100; // cm -> m
+    const lambda = layer.lambda;
+    const rho = layer.rho;
+    const c = layer.c;
+
+    // Temperaturleitfähigkeit a [m²/s]
+    const a = lambda / (rho * c);
+
+    // Eindringtiefe der Temperaturwelle [m]
+    const xi = Math.sqrt((a * periodT) / Math.PI);
+
+    // Wärmeeindringzahl b [J/(m²Ks^0.5)]
+    const b = Math.sqrt(lambda * rho * c);
+
+    // dimensionslose Schichtdicke (Phasenwinkel-Beitrag)
+    const dRatio = d / xi;
+
+    // Phasenverschiebung dieser Schicht in Stunden
+    const phaseShiftLayer = (dRatio) * (periodT / (2 * Math.PI)) / 3600;
+
+    // Amplitudendämpfung dieser Schicht (e^-d/xi)
+    const dampingLayer = Math.exp(-dRatio);
+
+    totalPhaseShiftHours += phaseShiftLayer;
+    totalDamping *= dampingLayer;
+
+    layerResults.push({
+      name: layer.name,
+      a, xi, b,
+      phaseShiftLayer,
+      dampingLayer
+    });
+  });
+
+  // Bewertung nach gängiger Praxis-Faustregel
+  let rating = "kritisch";
+  if (totalPhaseShiftHours >= 12) rating = "sehr gut";
+  else if (totalPhaseShiftHours >= 8) rating = "gut";
+  else if (totalPhaseShiftHours >= 6) rating = "ausreichend";
+
+  return {
+    totalPhaseShiftHours,
+    totalDamping,
+    layerResults,
+    rating
+  };
+}
+/* ================= TAUPUNKT-KARTE: ANZEIGE ================= */
+function renderTaupunktCard(dewResult) {
+  const card = document.getElementById('taupunktCard');
+  const statusEl = document.getElementById('taupunktStatus');
+  const mengeEl = document.getElementById('taupunktMenge');
+  const detailEl = document.getElementById('taupunktDetail');
+  if (!card || !statusEl) return;
+
+  if (!dewResult) {
+    statusEl.textContent = '–';
+    mengeEl.textContent = '';
+    detailEl.textContent = '';
+    card.className = 'result-box result-card';
+    return;
+  }
+
+  let cls = 'ok', text = '✅ Kein Tauwasser';
+  if (dewResult.bewertung === 'tolerierbar') { cls = 'warn'; text = '🟡 Tolerierbar'; }
+  else if (dewResult.bewertung === 'kritisch') { cls = 'danger'; text = '🔴 Kritisch'; }
+
+  statusEl.textContent = text;
+  card.className = 'result-box result-card ' + cls;
+
+  if (dewResult.hasCondensation) {
+    mengeEl.textContent = dewResult.condensateAmount_gm2 + ' g/m²a';
+    const grenzwert = dewResult.condensationLayerIsWood ? 250 : 500;
+    detailEl.textContent = 'Grenzwert: ' + grenzwert + ' g/m²a' +
+      (dewResult.condensationLayerIsWood ? ' (Holzschicht)' : '');
+  } else {
+    mengeEl.textContent = '0 g/m²a';
+    detailEl.textContent = 'Konstruktion bauphysikalisch unbedenklich';
+  }
+}
+/* ================= SOMMERKARTE: ANZEIGE ================= */
+function renderSummerCard(summerResult) {
+  const card = document.getElementById('summerCard');
+  const statusEl = document.getElementById('summerStatus');
+  const mengeEl = document.getElementById('summerMenge');
+  const detailEl = document.getElementById('summerDetail');
+  if (!card || !statusEl) return;
+
+  if (!summerResult) {
+    statusEl.textContent = '–';
+    mengeEl.textContent = '';
+    detailEl.textContent = 'Kein Tauwasser im Winter → keine Rücktrocknung nötig.';
+    card.className = 'result-box result-card summer';
+    return;
+  }
+
+  let cls = 'ok', text = '✅ Rücktrocknung gesichert';
+  if (!summerResult.kannVerdunsten) { cls = 'danger'; text = '🔴 Rücktrocknung unzureichend'; }
+
+  statusEl.textContent = text;
+  card.className = 'result-box result-card ' + cls;
+  mengeEl.textContent = summerResult.evaporation_gm2.toFixed(1) + ' g/m² (Verdunstung)';
+  detailEl.textContent =
+    'Winter-Tauwasser: ' + summerResult.winterCondensateGm2.toFixed(1) + ' g/m² · ' +
+    (summerResult.kannVerdunsten
+      ? 'Überschuss: ' + summerResult.ueberschuss_gm2.toFixed(1) + ' g/m² → mV ≥ mT erfüllt (DIN 4108-3)'
+      : 'Fehlbetrag: ' + Math.abs(summerResult.ueberschuss_gm2).toFixed(1) + ' g/m² → mV < mT, Konstruktion überprüfen!');
+}
+/* ================= PHASENVERSCHIEBUNG: ANZEIGE ================= */
+function renderPhaseShift(phaseResult) {
+  const box = document.getElementById('phaseResultBox');
+  const valueEl = document.getElementById('phaseValue');
+  const detailEl = document.getElementById('phaseDetailLabel');
+
+  if (!box || !valueEl || !detailEl) return; // falls IDs noch nicht im HTML sind
+
+  valueEl.textContent = phaseResult.totalPhaseShiftHours.toFixed(1) + " h";
+  detailEl.textContent =
+    "Amplitudendämpfung: " + (phaseResult.totalDamping * 100).toFixed(1) + " % | Bewertung: " + phaseResult.rating;
+
+  let cls = 'warn';
+  if (phaseResult.rating === "sehr gut" || phaseResult.rating === "gut") cls = 'ok';
+  box.className = 'result-box ' + cls;
+}
+/* ================= DIAGRAMM ================= */
+let dewChart = null;
+function renderChart(dewResult) {
+  const canvas = document.getElementById('glaserChart');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+
+  const labels = dewResult.sdCumValues.map(sd => sd.toFixed(3) + " m");
+
+  if (dewChart) dewChart.destroy();
+
+  dewChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Sättigungsdampfdruck pSat (Pa)',
+          data: dewResult.pSatValues,
+          borderColor: '#e74c3c',
+          backgroundColor: 'rgba(231,76,60,0.1)',
+          tension: 0.2
+        },
+        {
+          label: 'Tatsächlicher Dampfdruck p (Pa)',
+          data: dewResult.pValues,
+          borderColor: '#3498db',
+          backgroundColor: 'rgba(52,152,219,0.1)',
+          tension: 0
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        title: { display: true, text: 'Glaser-Diagramm: Dampfdruckverlauf über sd-Wert' },
+        legend: { position: 'top' }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Diffusionsäquivalente Luftschichtdicke sd (m)' } },
+        y: { title: { display: true, text: 'Dampfdruck (Pa)' } }
+      }
+    }
+  });
+}
+function cmToMm(cm) {
+  const mm = cm * 10;
+  return Math.round(mm * 10) / 10; // auf 1 Nachkommastelle runden, Fließkomma-Rauschen vermeiden
+}
+
+/* ================= ZUSATZKENNWERTE (rechts vom Diagramm) ================= */
+function calculateExtraMetrics(dewResult, phaseResult) {
+  if (layers.length === 0) return null;
+
+  // sd-Wert gesamt
+  const sdTotal = dewResult ? dewResult.sdTotal : layers.reduce((s,l) => s + l.mu*(l.thickness/100), 0);
+
+  // Gesamtdicke in cm
+  const dickeCm = layers.reduce((s,l) => s + l.thickness, 0);
+
+  // Flächengewicht: Summe (Dicke_m * rho) je Schicht
+  const gewicht = layers.reduce((s,l) => s + (l.thickness/100) * (l.rho || 0), 0);
+
+  // Oberflächentemperatur innen + rel. Feuchte (aus dewResult, erster Punkt = Innenoberfläche)
+  let tOberflaeche = null, tiIn = 20, teOut = -10;
+  if (dewResult && dewResult.temps && dewResult.temps.length > 0) {
+    tOberflaeche = dewResult.temps[0];
+  }
+  const oberflaechenProzent = tOberflaeche !== null
+    ? Math.max(0, Math.min(100, ((tOberflaeche - teOut) / (tiIn - teOut)) * 100))
+    : 0;
+
+  // Trocknungsreserve: Grenzwert (250 oder 500 g/m²a) minus tatsächliche Tauwassermenge
+  let trocknungsReserve = null;
+  if (dewResult) {
+    const grenzwert = dewResult.condensationLayerIsWood ? 250 : 500;
+    trocknungsReserve = grenzwert - (dewResult.condensateAmount_gm2 || 0);
+  }
+
+  // Innere Wärmespeicherkapazität: Summe der ersten ~10cm ab innen (vereinfachtes Praxismaß), 
+  // hier: Gesamtspeicherfähigkeit aller Schichten kJ/m²K
+  const speicherKJ = layers.reduce((s,l) => {
+    const dm = l.thickness/100;
+    return s + (dm * (l.rho||0) * (l.c||0)) / 1000; // J -> kJ
+  }, 0);
+
+  return {
+    sdTotal,
+    dickeCm,
+    gewicht,
+    tOberflaeche,
+    oberflaechenProzent,
+    trocknungsReserve,
+    grenzwertTrocknung: dewResult ? (dewResult.condensationLayerIsWood ? 250 : 500) : null,
+    speicherKJ
+  };
+}
+
+function renderExtraMetrics(extra) {
+  const ids = ['mSdWert','mDicke','mGewicht','mOberflaeche','mTrocknung','mSpeicher'];
+  if (!document.getElementById('mSdWert')) return; // Panel noch nicht im HTML
+
+  if (!extra) {
+    ids.forEach(id => document.getElementById(id).textContent = '–');
+    return;
+  }
+
+  document.getElementById('mSdWert').textContent = extra.sdTotal.toFixed(2) + ' m';
+  document.getElementById('mDicke').textContent = extra.dickeCm.toFixed(1) + ' cm';
+  document.getElementById('mGewicht').textContent = extra.gewicht.toFixed(1) + ' kg/m²';
+
+  document.getElementById('mOberflaeche').textContent =
+    (extra.tOberflaeche !== null ? extra.tOberflaeche.toFixed(1) + ' °C' : '–');
+  const bar = document.getElementById('mOberflaecheBar');
+  if (bar) {
+    bar.style.width = extra.oberflaechenProzent.toFixed(0) + '%';
+    bar.style.background = extra.oberflaechenProzent > 70 ? 'var(--success)' : extra.oberflaechenProzent > 40 ? '#f39c12' : 'var(--danger)';
+  }
+
+  document.getElementById('mTrocknung').textContent =
+    extra.trocknungsReserve !== null
+      ? extra.trocknungsReserve.toFixed(0) + ' g/m²a (von ' + extra.grenzwertTrocknung + ')'
+      : '–';
+
+  document.getElementById('mSpeicher').textContent = extra.speicherKJ.toFixed(0) + ' kJ/m²K';
+}
+function render() {
+  renderTable();
+  const uResult = calculateUValue();
+  const dewResult = calculateDewPoint(uResult.rTotalRaw);
+  const phaseResult = calculatePhaseShift();
+
+  let summerResult = null;
+  if (dewResult.hasCondensation) {
+    summerResult = calculateSummerEvaporation(
+      dewResult.condensateAmount_gm2,
+      dewResult.condensationLayerIsWood
+    );
+  }
+
+  renderPreview(dewResult);
+  renderChart(dewResult);
+  renderTaupunktCard(dewResult);
+  renderSummerCard(summerResult);
+  renderPhaseShift(phaseResult);
+
+  const extra = calculateExtraMetrics(dewResult, phaseResult);
+  renderExtraMetrics(extra);
+}
+/* ================= EIGENES MATERIAL HINZUFÜGEN ================= */
+function addCustomMaterial() {
+  const name = document.getElementById('customName').value.trim();
+  const lambda = parseFloat(document.getElementById('customLambda').value);
+  const mu = parseFloat(document.getElementById('customMu').value);
+
+  if (!name || isNaN(lambda) || isNaN(mu)) {
+    alert("Bitte Name, λ-Wert und μ-Wert korrekt ausfüllen.");
+    return;
+  }
+
+  materials[name] = { lambda, mu, cat: "sonst" };
+  document.getElementById('customName').value = "";
+  document.getElementById('customLambda').value = "";
+  document.getElementById('customMu').value = "";
+  render();
+}
+
+/* ================= ZURÜCKSETZEN ================= */
+function resetAll() {
+  if (confirm("Wirklich alle Schichten löschen?")) {
+    layers = [];
+    render();
+  }
+}
+
+/* ================= INITIALISIERUNG ================= */
+window.addEventListener('DOMContentLoaded', () => {
+  loadTemplate('wdvs'); // startet mit einem Beispielaufbau, ruft automatisch render() auf
+});
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('sw.js');
+  }
+</script>
+</script>
+</body>
+</html>
