@@ -1,7 +1,7 @@
 {
   "name": "Roofski",
   "short_name": "Roofski",
-  "start_url": "./Uwert.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#1e293b",
