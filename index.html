@@ -1474,14 +1474,16 @@ function resetAll() {
   }
 }
 </script>
+	<script>
 /* ================= INITIALISIERUNG ================= */
 window.addEventListener('DOMContentLoaded', () => {
   loadTemplate('wdvs'); // startet mit einem Beispielaufbau, ruft automatisch render() auf
 });
-<script>
+	</script>
+		<script>
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
   }
-</script>
+		</script>
 </body>
 </html>
