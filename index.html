@@ -1473,7 +1473,7 @@ function resetAll() {
     render();
   }
 }
-
+</script>
 /* ================= INITIALISIERUNG ================= */
 window.addEventListener('DOMContentLoaded', () => {
   loadTemplate('wdvs'); // startet mit einem Beispielaufbau, ruft automatisch render() auf
@@ -1482,7 +1482,6 @@ window.addEventListener('DOMContentLoaded', () => {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js');
   }
-</script>
 </script>
 </body>
 </html>
